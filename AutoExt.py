@@ -47,7 +47,7 @@ except Exception as e:
 
 class AutoExt:
 	def __init__(self, args):
-		self.version ='A1.031717'
+		self.version ='beta1.031717'
 		
 		#start timer
 		self.startTime=time.time()
@@ -185,9 +185,9 @@ def main():
 	runAutoext.clear()
 	runAutoext.banner(args)
 	runAutoext.checkargs(args, parser)
-	#runAutoext.dnslookup(args)
+	runAutoext.dnslookup(args)
 	runAutoext.whois(args)
-	#runAutoext.nmap(args)
+	runAutoext.nmap(args)
 	#runAutoext.ftp(args)
 
 	#runAutoext.report(args)
