@@ -6,3 +6,5 @@
 #convert output for use in sslscan
 #if udp500, ike-scan/ikeforce
 #if 80/443 scrape for login
+#repurpose docx reportgen for report
+#create some sort of findings db with like flask or tornado?
