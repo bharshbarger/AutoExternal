@@ -1,5 +1,2 @@
 # AutoExternal
-Complimentary project to AutOSINT. This tool does all the active stuff against a target.
-
-
-installation: pip3 install -r requirements.txt
+Complimentary project to AutOSINT. This tool does all the active stuff against a target that you'd normally use when kicking off an external.
