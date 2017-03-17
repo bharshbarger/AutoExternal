@@ -1,3 +1,1 @@
 libnmap
-sslyze
-whois
