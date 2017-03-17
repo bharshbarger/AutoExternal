@@ -18,8 +18,6 @@
 
 
 
-
-
 #if udp500, ike-scan/ikeforce/iker
 #https://labs.portcullis.co.uk/tools/iker/
 
@@ -151,11 +149,26 @@ class AutoExt:
 			time.sleep(1)
 
 	#https://libnmap.readthedocs.io/en/latest/process.html
-	def nmap(self, args):
+	def nmap_tcp(self, args):
 
 		print ('[i] Running nmap scan against %s targets' % len(self.targets))
 
 		nmap_proc = NmapProcess(targets=self.targets, options="-n -p- -T4 --min-hostgroup=50")
+		nmap_proc.run_background()
+		while nmap_proc.is_running():
+		    print("Nmap Scan running: ETC: {0} DONE: {1}%".format(nmap_proc.etc,
+		                                                          nmap_proc.progress))
+		    time.sleep(10)
+
+		print("rc: {0} output: {1}".format(nmap_proc.rc, nmap_proc.summary))
+
+
+	#https://libnmap.readthedocs.io/en/latest/process.html
+	def nmap_udp(self, args):
+
+		print ('[i] Running nmap scan against %s targets' % len(self.targets))
+
+		nmap_proc = NmapProcess(targets=self.targets, options="-n -sU -T4 --min-hostgroup=50")
 		nmap_proc.run_background()
 		while nmap_proc.is_running():
 		    print("Nmap Scan running: ETC: {0} DONE: {1}%".format(nmap_proc.etc,
@@ -187,7 +200,8 @@ def main():
 	runAutoext.checkargs(args, parser)
 	runAutoext.dnslookup(args)
 	runAutoext.whois(args)
-	runAutoext.nmap(args)
+	runAutoext.nmap_tcp(args)
+	runAutoext.nmap_udp(args)
 	#runAutoext.ftp(args)
 
 	#runAutoext.report(args)
