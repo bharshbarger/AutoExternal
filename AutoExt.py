@@ -29,23 +29,22 @@
 
 try:
 	#builtins
-	import argparse, time, os, sys, ftplib, socket, subprocess
+	import argparse, time, os, sys, ftplib, socket, subprocess, sqlite3, re
 
 	#local imports
 	from reportgen import Reportgen
-
+	import setupAutoExtDB
+	
 	#dependencies
-	import libnmap, ipwhois
-
 	from libnmap.process import NmapProcess
+	from libnmap.parser import NmapParser
 	
 except Exception as e:
-	print('\n [!] Failed imports: ' +str(e))
-
+	print('\n[!] Failed imports: %s \n' % (str(e)))
 
 class AutoExt:
 	def __init__(self, args):
-		self.version ='beta1.031717'
+		self.version ='beta1.031817'
 		
 		#start timer
 		self.startTime=time.time()
@@ -58,6 +57,35 @@ class AutoExt:
 			os.makedirs(self.reportDir)
 		self.targetsFile = ''
 		self.targets=[]
+
+		self.autoExtDB = 'AutoExt.db'
+		#check for database
+		if not os.path.exists(self.autoExtDB):
+			print('\n[!] Database missing, creating %s \n' % self.autoExtDB)
+			setupAutoExtDB.main()
+
+		try:
+			self.dbconn = sqlite3.connect(self.autoExtDB)
+		except sqlite3.Error as e:
+			print("[-] Database Error: %s" % e.args[0])
+
+		
+		#unique domain list result
+		self.domainResult=set()
+
+		#assign client name and sub out special chars unless you like sqli
+		self.clientName = re.sub('\W+',' ', args.client)
+		#conn to db
+		cur = self.dbconn.cursor()
+		print('[i] Setting up database for %s:' % self.clientName)
+		c=self.clientName
+		#insert rows
+		try:
+			cur.execute("INSERT INTO client (name) VALUES ('%s') " % (c))
+			self.dbconn.commit()
+		except sqlite3.Error as e:
+			print("[-] Database Error: %s" % e.args[0])
+
 
 	def clear(self):
 
@@ -97,12 +125,13 @@ class AutoExt:
 				targets = f.readlines()
 				targets = [x.strip() for x in targets]
 				self.targets = targets
+
+				#filter only valid IP addresses from targets. could catch sqli/odd chars too?
 				for i,t in enumerate(self.targets):
-				
 					try:
 						socket.inet_aton(str(t))
 					except socket.error:
-						print ('[!] Invalid IP address %s entered at line %s!' %  (t,i+1))
+						print ('\n[!] Invalid IP address %s entered at line %s!\n' %  (t,i+1))
 						sys.exit()
 
 
@@ -115,53 +144,57 @@ class AutoExt:
 		if args.threads is not None:
 			args.threads=int(args.threads)
 
-	#run the docx report. text files happen in the respective functions
+		if args.client is None:
+			print('\n[!] Client name required, please provide with -c\n')
+			sys.exit()
+
 	def report(self, args):
 		
 		reportGen = Reportgen()
 		reportGen.run(args, self.reportDir, self.lookup, self.whoisResult, self.domainResult, self.googleResult, self.shodanResult, self.pasteScrapeResult, self.harvesterResult, self.scrapeResult, self.credResult, self.pyfocaResult)
 
-
-	#https://ipwhois.readthedocs.io/en/latest/NIR.html
-	def whois(self, args):
-		whoisResult=set()
-
-
-		for t in self.targets:
-			try:
-				subprocess.Popen(['whois',t], stdout = subprocess.PIPE).communicate()[0].split('\n')
-			except:
-				print '[-] Error running whois command'
-				sys.exit()
-			time.sleep(5)
-
 	def dnslookup(self,args):
-		domainResult=set()
-
+		
+		print('[i] Querying unique domains from targets list')
 		for t in self.targets:
 
-			domain=(socket.gethostbyaddr(t)[0].split('.')[1:])
-			domainResult.add('.'.join(domain))
-			print socket.gethostbyaddr(t)[0]
-			print domainResult
+			try:
+				domain=(socket.gethostbyaddr(t)[0].split('.')[1:])
+				self.domainResult.add('.'.join(domain))
+				time.sleep(0.5)
+			except socket.error as e:
+				continue
 
-			#domainResult.add(socket.gethostbyaddr(t))
-			time.sleep(1)
+		#conn to db
+		cur = self.dbconn.cursor()
+		
+		print('[i] Unique domains encountered for %s: \n' % self.clientName)
+
+		#loop results 
+		c=self.clientName
+		for d in self.domainResult:
+			print(str(''.join(d)))
+			#insert rows
+			try:
+				cur.execute("INSERT INTO domains (name, client_id) VALUES ('%s',(SELECT ID from client where name ='%s'))" % (d,c))
+				self.dbconn.commit()
+			except sqlite3.Error as e:
+				print("[-] Database Error: %s" % e.args[0])
+
+		print('\n[i] Written to database\n')
 
 	#https://libnmap.readthedocs.io/en/latest/process.html
 	def nmap_tcp(self, args):
 
-		print ('[i] Running nmap scan against %s targets' % len(self.targets))
+		print ('[i] Running nmap scan against %s targets\n' % len(self.targets))
 
-		nmap_proc = NmapProcess(targets=self.targets, options="-n -p- -T4 --min-hostgroup=50")
-		nmap_proc.run_background()
-		while nmap_proc.is_running():
-		    print("Nmap Scan running: ETC: {0} DONE: {1}%".format(nmap_proc.etc,
-		                                                          nmap_proc.progress))
-		    time.sleep(10)
+		nm = NmapProcess(targets=self.targets, options="-n -p80 -T4 --min-hostgroup=50")
+		nm.run()
 
-		print("rc: {0} output: {1}".format(nmap_proc.rc, nmap_proc.summary))
-
+		nmap_report = NmapParser.parse(nm.stdout)
+		
+		for scanned_hosts in nmap_report.hosts:
+		    print scanned_hosts
 
 	#https://libnmap.readthedocs.io/en/latest/process.html
 	def nmap_udp(self, args):
@@ -177,8 +210,6 @@ class AutoExt:
 
 		print("rc: {0} output: {1}".format(nmap_proc.rc, nmap_proc.summary))
 
-
-
 def main():
 
 	#https://docs.python.org/3/library/argparse.html
@@ -186,7 +217,7 @@ def main():
 	parser.add_argument('-a', '--all', help = 'run All queries', action = 'store_true')
 	parser.add_argument('-c', '--client', help = 'client name')
 	parser.add_argument('-f', '--file', metavar='targets.txt',help = 'input file')
-	parser.add_argument('-i', '--ipaddress', metavar='127.0.0.1',help = 'IP address(es) to scan')
+	parser.add_argument('-i', '--ipaddress', metavar='127.0.0.1', nargs='*',help = 'IP address(es) to scan')
 	parser.add_argument('-n', '--nmap', metavar='nmap options',help = 'run nmap')
 	parser.add_argument('-t', '--threads', metavar='2', help='generally how parallel to run tests')
 	parser.add_argument('-v', '--verbose', help = 'Verbose', action = 'store_true')	
@@ -199,9 +230,8 @@ def main():
 	runAutoext.banner(args)
 	runAutoext.checkargs(args, parser)
 	runAutoext.dnslookup(args)
-	runAutoext.whois(args)
-	runAutoext.nmap_tcp(args)
-	runAutoext.nmap_udp(args)
+	#runAutoext.nmap_tcp(args)
+	#runAutoext.nmap_udp(args)
 	#runAutoext.ftp(args)
 
 	#runAutoext.report(args)
