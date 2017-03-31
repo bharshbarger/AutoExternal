@@ -14,9 +14,10 @@ class Database:
 	def connect(self):
 
 		try:
-			self.dbconn = sqlite3.connect(self.autoExtDB)
+			dbconn = sqlite3.connect(self.autoExtDB)
 		except sqlite3.Error as e:
 			print("[-] Database Error: %s" % e.args[0])
+		return dbconn
 
 	def add_client(self):
 
@@ -40,7 +41,7 @@ class Database:
 			print("[-] Database Error: %s" % e.args[0])
 
 
-main():
+def main():
 
 	dbOps=Database()
 	#dbOps.connect()

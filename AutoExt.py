@@ -58,8 +58,7 @@ class AutoExt:
 		self.runCheckInet = CheckInternet()
 		self.runCheckInet.get_external_address()
 
-		self.runDns=Dnslookup()
-
+		self.runDns = Dnslookup()
 
 	def clear(self):
 

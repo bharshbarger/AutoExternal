@@ -1,39 +1,40 @@
 #!/usr/bin/env python
 
-import socket
-import sqlite3
+import socket, sqlite3, time
 
-
-from modules.dbcommands import connect
+from modules.dbcommands import Database
 
 
 class Dnslookup:
 
-
+	def __init__(self):
+		self.domainResult=set()
+		self.domainResult=set()
 
 	def query(self,args,targets,clientName):
 
-
-		self.domainResult=set()
+		
 		print('[i] Running dig on IP addresses')
 		for t in targets:
-
 			try:
 				domain=(socket.gethostbyaddr(t)[0].split('.')[1:])
-				self.domainResult.add('.'.join(domain))
+				print('[i] %s resolves to %s' % (t, '.'.join(domain)))
+				if domain is not None:
+					self.domainResult.add('.'.join(domain))
 				time.sleep(0.5)
 			except socket.error as e:
+				print('[!] %s does not resolve to a name' % t)
 				continue
 
-		
+
+
 		print('[i] Unique domains encountered for %s: \n' % clientName)
 
 		dbOps=Database()
-
-
+		dbconn=dbOps.connect()
 
 		#conn to db
-		cur = self.dbconn.cursor()
+		cur = dbconn.cursor()
 
 		#loop results 
 		c=clientName
@@ -42,7 +43,7 @@ class Dnslookup:
 			#insert rows
 			try:
 				cur.execute("INSERT INTO domains (name, client_id) VALUES ('%s',(SELECT ID from client where name ='%s'))" % (d,c))
-				self.dbconn.commit()
+				dbconn.commit()
 			except sqlite3.Error as e:
 				print("[-] Database Error: %s" % e.args[0])
 
