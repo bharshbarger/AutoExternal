@@ -30,7 +30,7 @@ class Dnslookup:
 
 		print('[i] Unique domains encountered for %s: \n' % clientName)
 
-		dbOps=Database()
+		dbOps=Database(clientName)
 		dbconn=dbOps.connect()
 
 		#conn to db

@@ -6,9 +6,10 @@ import sqlite3
 
 class Database:
 
-	def __init__(self):
+	def __init__(self, clientName):
 
 		self.autoExtDB = 'AutoExt.db'
+		self.clientName = clientName
 
 
 	def connect(self):
@@ -19,18 +20,27 @@ class Database:
 			print("[-] Database Error: %s" % e.args[0])
 		return dbconn
 
-	def add_client(self, clientName):
+	def add_client(self):
 
 		dbconn=self.connect()
 
 		#conn to db
 		cur = dbconn.cursor()
-		print('[i] Adding client [ %s ] to database:' % clientName)
-		c=clientName
+		print('[i] Adding client [ %s ] to database:' % self.clientName)
+		c=self.clientName
 		#insert rows
 		try:
 			cur.execute("SELECT * FROM client WHERE (name = '%s') " % (c))
-			dbconn.commit()
+
+        	results = cur.fetchall()
+        	cur.close()
+        	print results
+        	return results
+
+
+
+
+
 		except sqlite3.Error as e:
 			print("[-] Database Error: %s" % e.args[0])
 

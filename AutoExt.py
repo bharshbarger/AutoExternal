@@ -6,123 +6,103 @@ try:
 	from urlparse import urlparse
 	from subprocess import Popen, PIPE, STDOUT 
 
-	#local imports
+	#from local modules import class
 	from reportgen import Reportgen
 	import setupAutoExtDB
+	from modules.dbcommands import Database
 	from modules.check_internet import CheckInternet
 	from modules.dns_query import Dnslookup
-	from modules.dbcommands import Database
-	
-	#dependencies
-	from libnmap.process import NmapProcess
-	from libnmap.parser import NmapParser
+	from modules.nmap import AutoNmap
 	
 except Exception as e:
 	print('\n[!] Failed imports: %s \n' % (str(e)))
 
 class AutoExt:
-	def __init__(self, args):
+	def __init__(self, args, parser):
 		self.version ='beta1.033017'
-		
-		#start timer
+		self.args = args
+		self.parser = parser
 		self.startTime=time.time()
-
-		#local dirs
 		self.reportDir='./reports/'
-
-		#check local dirs
-		if not os.path.exists(self.reportDir):
-			os.makedirs(self.reportDir)
 		self.targetsFile = ''
 		self.targetList = []
 		self.targetSet=set()
-
 		self.autoExtDB = 'AutoExt.db'
-		#check for database
-		if not os.path.exists(self.autoExtDB):
-			print('\n[!] Database missing, creating %s \n' % self.autoExtDB)
-			setupAutoExtDB.main()
-
-		try:
-			self.dbconn = sqlite3.connect(self.autoExtDB)
-		except sqlite3.Error as e:
-			print("[-] Database Error: %s" % e.args[0])
-
-		
-		#unique domain list result
 		self.domainResult=set()
-
-		#assign client name and sub out special chars unless you like sqli
 		self.clientName = None
 
-		self.runCheckInet = CheckInternet()
-		self.runCheckInet.get_external_address()
-
-		self.runDns = Dnslookup()
-
 	def clear(self):
-
-		#clean up screen
 	    os.system('cls' if os.name == 'nt' else 'clear')
 
 
-	def banner(self, args):
-			
-		#verbosity flag to print logo and args
-		if args.verbose is True:print( '''
+	def banner(self):
+		if self.args.verbose is True:print( '''
     _         _        _____      _                        _ 
    / \  _   _| |_ ___ | ____|_  _| |_ ___ _ __ _ __   __ _| |
   / _ \| | | | __/ _ \|  _| \ \/ / __/ _ \ '__| '_ \ / _` | |
  / ___ \ |_| | || (_) | |___ >  <| ||  __/ |  | | | | (_| | |
 /_/   \_\__,_|\__\___/|_____/_/\_/\__\___|_|  |_| |_|\__,_|_|\n''')
 
-		if args.verbose is True:print ('AutoExternal.py %s, a way to automate common external testing tasks\n' % self.version)
-		if args.verbose is True:print (args)
+		if self.args.verbose is True:print ('AutoExternal.py %s, a way to automate common external testing tasks\n' % self.version)
+		if self.args.verbose is True:print (self.args)
 
 
 	
-	def checkargs(self, args, parser):
+	def checkargs(self):
+
+		#check local dirs
+		if not os.path.exists(self.reportDir):
+			os.makedirs(self.reportDir)
 
 		#require at least one argument
-		if not (args.file or args.ipaddress):
+		if not (self.args.file or self.args.ipaddress):
 		    print('\n[!] No scope provided, add a file with IPs with -f or IP address(es) with -i\n')
 		    parser.print_help()
 		    sys.exit(1)
 
-		if args.file is not None and args.ipaddress is None:
-			print('[i] Opening targets file %s' % args.file)
-			self.targetsFile=args.file
-			self.readTargets(args)
+		#if a file is supplied and no ip is supplied, open it with readTargets
+		if self.args.file is not None and self.args.ipaddress is None:
+			print('[i] Opening targets file %s' % self.args.file)
+			self.targetsFile=self.args.file
+			self.readTargets()
 
-		if args.threads is None:
-			args.threads = 2
+		#check threads, default is 2
+		if self.args.threads is None:
+			self.args.threads = 2
 
-		if args.threads is not None:
-			args.threads=int(args.threads)
+		#if threads specified, use that value
+		if self.args.threads is not None:
+			self.args.threads=int(self.args.threads)
 
-		if args.client is None:
+		#check for a supplied client name and exit if none provided
+		if self.args.client is None:
 			print('\n[!] Client name required, please provide with -c\n')
-			sys.exit()
+			sys.exit(0)
+		else:
+			#strip out specials in client name
+			self.clientName = re.sub('\W+',' ', self.args.client)
 
-		#strip out specials in client name
-		self.clientName = re.sub('\W+',' ', args.client)
+		#check for database, create if missing
+		if not os.path.exists(self.autoExtDB):
+			print('\n[!] Database missing, creating %s \n' % self.autoExtDB)
+			setupAutoExtDB.main()
 
-
-
-	def readTargets(self, args):
+	def readTargets(self):
+		#open targets file
 		with open(self.targetsFile) as f:
 			targets = f.readlines()
 			
-			#add to target list
+			#add to target list, strip stuff
 			for x in targets:
 				self.targetList.append(x.strip())
 		
-		if args.verbose is True:print('\n[v] TARGET LIST: %s\n' % self.targetList)
+		#print list if verbose 
+		if self.args.verbose is True:print('\n[v] TARGET LIST: %s\n' % self.targetList)
 
 		#iterate through targetList
 		for i,t in enumerate(self.targetList):
 			
-			#test to see if its a valid ip
+			#test to see if its a valid ip using socket
 			try:
 				print(socket.inet_aton(str(t))) 
 				socket.inet_aton(t)
@@ -132,7 +112,7 @@ class AutoExt:
 			#if the ip isnt valid
 			except socket.error:
 				#tell them
-				print ('[!] Invalid IP address [ %s ] found on line %s!' %  (t,i+1))
+				if self.args.verbose is True:print ('[v] Invalid IP address [ %s ] found on line %s!' %  (t,i+1))
 				
 				#fix the entries. this function will add resolved IPs to the targetSet
 				self.fix_targets(t)
@@ -142,20 +122,23 @@ class AutoExt:
 
 		#finally do a regex on targetList to clean it up(remove non-ip addresses)
 		ipAddrRegex=re.compile("\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}")
+		
 		#only allow IP addresses--if it isnt'
 		if not ipAddrRegex.match(t):
 			#remove from targetList
-			print('removing invalid IP %s'% t)
+			if self.args.verbose is True:print('[v] Removing invalid IP %s'% t)
 			self.targetList.remove(t)
 		else:
 			#otherwise add to target set
 			self.targetSet.add(t)
 
+		#need to expand cidr and filter rfc1918, etc	
 
+		#show user target set of unique IPs
+		if self.args.verbose is True:print('[i] Reconciled target list:\n')
+		if self.args.verbose is True:print(', '.join(self.targetSet))
 
-		print('[+] All target IP addresses are valid!')
-		print(self.targetSet)
-
+		print('\n[i] All target checks are successful')
 
 	def fix_targets(self, t):
 		
@@ -164,7 +147,7 @@ class AutoExt:
 		if re.findall('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', t):
 			parsed_uri = urlparse(t)
 			domain = '{uri.netloc}'.format(uri=parsed_uri)
-			print('[i] Looking up IP for %s' % domain)
+			if self.args.verbose is True:print('[i] Looking up IP for %s' % domain)
 			hostDomainCmd = subprocess.Popen(['dig', '+short', domain], stdout = PIPE)
 			#print('[i] IP address for %s found: %s' % (t,hostDomainCmd.stdout.read().strip('\n')))
 			#for each line in the host commands output, add to a fixed target list
@@ -172,54 +155,40 @@ class AutoExt:
 		
 		#filter hostnames
 		else:
-			print('[i] Looking up IP for hostname %s' % t)
+			if self.args.verbose is True:print('[i] Looking up IP for hostname %s' % t)
 			#just resolve ip from hostname if no http:// or https:// in the entry
 			hostNameCmd = subprocess.Popen(['dig', '+short', t], stdout = PIPE)
 			self.targetSet.add(hostNameCmd.stdout.read().strip('\n'))
 
+	#add the supplied client to the database
 	def add_client_db(self):
-		clientName=self.clientName
-		dbOps=Database()
-		dbOps.add_client(clientName)		 
+		
+		dbOps = Database(self.clientName)
+		dbOps.add_client()		 
+
+	#invoke domain results module
+	def dnslookup(self):
+
+		runDns = Dnslookup()
+		runDns.query(args,self.targetSet, self.clientName)
+
+	#invoke nmap scans module
+	def nmap_scan(self):
+
+		nmap = AutoNmap(self.targetSet)
+		nmap.scan_tcp()
+		#nmap.scan_udp()
+
+	def ftp_check(self):
+		ftp=''
 
 
-	def report(self, args):
+	#invoke report module
+	def report(self):
 		
 		reportGen = Reportgen()
-		reportGen.run(args, self.reportDir, self.lookup, self.whoisResult, self.domainResult, self.googleResult, self.shodanResult, self.pasteScrapeResult, self.harvesterResult, self.scrapeResult, self.credResult, self.pyfocaResult)
+		reportGen.run(self.args, self.reportDir, self.lookup, self.whoisResult, self.domainResult, self.googleResult, self.shodanResult, self.pasteScrapeResult, self.harvesterResult, self.scrapeResult, self.credResult, self.pyfocaResult)
 
-	def dnslookup(self,args):
-		targets = self.targetSet
-		clientName = self.clientName
-		
-		self.runDns.query(args,targets, clientName)
-
-	#https://libnmap.readthedocs.io/en/latest/process.html
-	def nmap_tcp(self, args):
-
-		print ('[i] Running nmap scan against %s targets\n' % len(self.targets))
-
-		nm = NmapProcess(targets=self.targets, options="-n -p80 -T4 --min-hostgroup=50")
-		nm.run()
-
-		nmap_report = NmapParser.parse(nm.stdout)
-		
-		for scanned_hosts in nmap_report.hosts:
-		    print scanned_hosts
-
-	#https://libnmap.readthedocs.io/en/latest/process.html
-	def nmap_udp(self, args):
-
-		print ('[i] Running nmap scan against %s targets' % len(self.targets))
-
-		nmap_proc = NmapProcess(targets=self.targets, options="-n -sU -T4 --min-hostgroup=50")
-		nmap_proc.run_background()
-		while nmap_proc.is_running():
-		    print("Nmap Scan running: ETC: {0} DONE: {1}%".format(nmap_proc.etc,
-		                                                          nmap_proc.progress))
-		    time.sleep(10)
-
-		print("rc: {0} output: {1}".format(nmap_proc.rc, nmap_proc.summary))
 
 def main():
 
@@ -234,18 +203,21 @@ def main():
 	parser.add_argument('-v', '--verbose', help = 'Verbose', action = 'store_true')	
 	
 	args = parser.parse_args()
-
+	
+	#make sure you're online
+	runCheckInet = CheckInternet()
+	runCheckInet.get_external_address()
 
 
 	#run functions with arguments passed
-	runAutoext = AutoExt(args)
+	runAutoext = AutoExt(args, parser)
 	runAutoext.clear()
-	runAutoext.banner(args)
-	runAutoext.checkargs(args, parser)
+	runAutoext.banner()
+	runAutoext.checkargs()
 	runAutoext.add_client_db()
-	runAutoext.dnslookup(args)
-	#runAutoext.nmap_tcp(args)
-	#runAutoext.nmap_udp(args)
+	runAutoext.dnslookup()
+	runAutoext.nmap_scan()
+
 	#runAutoext.ftp(args)
 
 	#runAutoext.report(args)
