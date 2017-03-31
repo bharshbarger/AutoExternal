@@ -1,53 +1,28 @@
 #!/usr/bin/env python
 
-#flow:
-#get scope, test IP for valid IP
-#present user with whois to confirm correct target
-#https://pypi.python.org/pypi/whois  pip3 install whois
-
-
-
-#import and run autosint, linkscrape, smbshakedown
-#do an nmap, save to db?
-#https://pypi.python.org/pypi/python-libnmap/0.6.1
-#pip install libnmap
-#store nmap to a db
-
-
-#ssl
-
-
-
-
-
-#if udp500, ike-scan/ikeforce/iker
-#https://labs.portcullis.co.uk/tools/iker/
-
-#ftp anon login or spray with ftplib
-
-#if 80/443 scrape for login
-#repurpose docx reportgen for report
-#create some sort of findings db with like flask or tornado?
-
 try:
 	#builtins
-	import argparse, time, os, sys, ftplib, socket, subprocess
+	import argparse, time, os, sys, ftplib, socket, subprocess, sqlite3, re
+	from urlparse import urlparse
+	from subprocess import Popen, PIPE, STDOUT 
 
 	#local imports
 	from reportgen import Reportgen
-
+	import setupAutoExtDB
+	from modules.check_internet import CheckInternet
+	from modules.dns_query import Dnslookup
+	from modules.dbcommands import Database
+	
 	#dependencies
-	import libnmap, ipwhois
-
 	from libnmap.process import NmapProcess
+	from libnmap.parser import NmapParser
 	
 except Exception as e:
-	print('\n [!] Failed imports: ' +str(e))
-
+	print('\n[!] Failed imports: %s \n' % (str(e)))
 
 class AutoExt:
 	def __init__(self, args):
-		self.version ='beta1.031717'
+		self.version ='beta1.033017'
 		
 		#start timer
 		self.startTime=time.time()
@@ -59,7 +34,31 @@ class AutoExt:
 		if not os.path.exists(self.reportDir):
 			os.makedirs(self.reportDir)
 		self.targetsFile = ''
-		self.targets=[]
+		self.targetList = []
+		self.targetSet=set()
+
+		self.autoExtDB = 'AutoExt.db'
+		#check for database
+		if not os.path.exists(self.autoExtDB):
+			print('\n[!] Database missing, creating %s \n' % self.autoExtDB)
+			setupAutoExtDB.main()
+
+		try:
+			self.dbconn = sqlite3.connect(self.autoExtDB)
+		except sqlite3.Error as e:
+			print("[-] Database Error: %s" % e.args[0])
+
+		
+		#unique domain list result
+		self.domainResult=set()
+
+		#assign client name and sub out special chars unless you like sqli
+		self.clientName = None
+
+		self.runCheckInet = CheckInternet()
+		self.runCheckInet.get_external_address()
+
+		self.runDns = Dnslookup()
 
 	def clear(self):
 
@@ -91,25 +90,9 @@ class AutoExt:
 		    sys.exit(1)
 
 		if args.file is not None and args.ipaddress is None:
-			print('[i] Opening targets file')
-
+			print('[i] Opening targets file %s' % args.file)
 			self.targetsFile=args.file
-
-			with open(self.targetsFile) as f:
-				targets = f.readlines()
-				targets = [x.strip() for x in targets]
-				self.targets = targets
-				for i,t in enumerate(self.targets):
-				
-					try:
-						socket.inet_aton(str(t))
-					except socket.error:
-						print ('[!] Invalid IP address %s entered at line %s!' %  (t,i+1))
-						sys.exit()
-
-
-
-				print('[+] All target IP addresses are valid!')
+			self.readTargets(args)
 
 		if args.threads is None:
 			args.threads = 2
@@ -117,45 +100,113 @@ class AutoExt:
 		if args.threads is not None:
 			args.threads=int(args.threads)
 
-	#run the docx report. text files happen in the respective functions
+		if args.client is None:
+			print('\n[!] Client name required, please provide with -c\n')
+			sys.exit()
+
+		#strip out specials in client name
+		self.clientName = re.sub('\W+',' ', args.client)
+
+	def readTargets(self, args):
+		with open(self.targetsFile) as f:
+			targets = f.readlines()
+			
+			#add to target list
+			for x in targets:
+				self.targetList.append(x.strip())
+		
+		if args.verbose is True:print('\n[v] TARGET LIST: %s\n' % self.targetList)
+
+		#iterate through targetList
+		for i,t in enumerate(self.targetList):
+			
+			#test to see if its a valid ip
+			try:
+				print(socket.inet_aton(str(t))) 
+				socket.inet_aton(t)
+				#add to set
+				self.targetSet.add(t)
+
+			#if the ip isnt valid
+			except socket.error:
+				#tell them
+				print ('[!] Invalid IP address [ %s ] found on line %s!' %  (t,i+1))
+				
+				#fix the entries. this function will add resolved IPs to the targetSet
+				self.fix_targets(t)
+
+			except Exception as e:
+				print(e)
+
+		#finally do a regex on targetList to clean it up(remove non-ip addresses)
+		ipAddrRegex=re.compile("\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}")
+		#only allow IP addresses--if it isnt'
+		if not ipAddrRegex.match(t):
+			#remove from targetList
+			print('removing invalid IP %s'% t)
+			self.targetList.remove(t)
+		else:
+			#otherwise add to target set
+			self.targetSet.add(t)
+
+
+
+		print('[+] All target IP addresses are valid!')
+		print(self.targetSet)
+
+
+	def fix_targets(self, t):
+		
+		#function to resolve hostnames in target file or hostnames stripped from URLs to ip addresses.
+		#handle full urls:
+		if re.findall('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', t):
+			parsed_uri = urlparse(t)
+			domain = '{uri.netloc}'.format(uri=parsed_uri)
+			print('[i] Looking up IP for %s' % domain)
+			hostDomainCmd = subprocess.Popen(['dig', '+short', domain], stdout = PIPE)
+			#print('[i] IP address for %s found: %s' % (t,hostDomainCmd.stdout.read().strip('\n')))
+			#for each line in the host commands output, add to a fixed target list
+			self.targetSet.add(hostDomainCmd.stdout.read().strip('\n')) 
+		
+		#filter hostnames
+		else:
+			print('[i] Looking up IP for hostname %s' % t)
+			#just resolve ip from hostname if no http:// or https:// in the entry
+			hostNameCmd = subprocess.Popen(['dig', '+short', t], stdout = PIPE)
+			self.targetSet.add(hostNameCmd.stdout.read().strip('\n'))
+		 
+
+
 	def report(self, args):
 		
 		reportGen = Reportgen()
 		reportGen.run(args, self.reportDir, self.lookup, self.whoisResult, self.domainResult, self.googleResult, self.shodanResult, self.pasteScrapeResult, self.harvesterResult, self.scrapeResult, self.credResult, self.pyfocaResult)
 
-
-	#https://ipwhois.readthedocs.io/en/latest/NIR.html
-	def whois(self, args):
-		whoisResult=set()
-
-
-		for t in self.targets:
-			try:
-				subprocess.Popen(['whois',t], stdout = subprocess.PIPE).communicate()[0].split('\n')
-			except:
-				print '[-] Error running whois command'
-				sys.exit()
-			time.sleep(5)
-
 	def dnslookup(self,args):
-		domainResult=set()
-
-		for t in self.targets:
-
-			domain=(socket.gethostbyaddr(t)[0].split('.')[1:])
-			domainResult.add('.'.join(domain))
-			print socket.gethostbyaddr(t)[0]
-			print domainResult
-
-			#domainResult.add(socket.gethostbyaddr(t))
-			time.sleep(1)
+		targets = self.targetSet
+		clientName = self.clientName
+		
+		self.runDns.query(args,targets, clientName)
 
 	#https://libnmap.readthedocs.io/en/latest/process.html
-	def nmap(self, args):
+	def nmap_tcp(self, args):
+
+		print ('[i] Running nmap scan against %s targets\n' % len(self.targets))
+
+		nm = NmapProcess(targets=self.targets, options="-n -p80 -T4 --min-hostgroup=50")
+		nm.run()
+
+		nmap_report = NmapParser.parse(nm.stdout)
+		
+		for scanned_hosts in nmap_report.hosts:
+		    print scanned_hosts
+
+	#https://libnmap.readthedocs.io/en/latest/process.html
+	def nmap_udp(self, args):
 
 		print ('[i] Running nmap scan against %s targets' % len(self.targets))
 
-		nmap_proc = NmapProcess(targets=self.targets, options="-n -p- -T4 --min-hostgroup=50")
+		nmap_proc = NmapProcess(targets=self.targets, options="-n -sU -T4 --min-hostgroup=50")
 		nmap_proc.run_background()
 		while nmap_proc.is_running():
 		    print("Nmap Scan running: ETC: {0} DONE: {1}%".format(nmap_proc.etc,
@@ -164,8 +215,6 @@ class AutoExt:
 
 		print("rc: {0} output: {1}".format(nmap_proc.rc, nmap_proc.summary))
 
-
-
 def main():
 
 	#https://docs.python.org/3/library/argparse.html
@@ -173,12 +222,14 @@ def main():
 	parser.add_argument('-a', '--all', help = 'run All queries', action = 'store_true')
 	parser.add_argument('-c', '--client', help = 'client name')
 	parser.add_argument('-f', '--file', metavar='targets.txt',help = 'input file')
-	parser.add_argument('-i', '--ipaddress', metavar='127.0.0.1',help = 'IP address(es) to scan')
+	parser.add_argument('-i', '--ipaddress', metavar='127.0.0.1', nargs='*',help = 'IP address(es) to scan')
 	parser.add_argument('-n', '--nmap', metavar='nmap options',help = 'run nmap')
 	parser.add_argument('-t', '--threads', metavar='2', help='generally how parallel to run tests')
 	parser.add_argument('-v', '--verbose', help = 'Verbose', action = 'store_true')	
 	
 	args = parser.parse_args()
+
+
 
 	#run functions with arguments passed
 	runAutoext = AutoExt(args)
@@ -186,8 +237,8 @@ def main():
 	runAutoext.banner(args)
 	runAutoext.checkargs(args, parser)
 	runAutoext.dnslookup(args)
-	runAutoext.whois(args)
-	runAutoext.nmap(args)
+	#runAutoext.nmap_tcp(args)
+	#runAutoext.nmap_udp(args)
 	#runAutoext.ftp(args)
 
 	#runAutoext.report(args)
