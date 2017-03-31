@@ -11,6 +11,7 @@ try:
 	import setupAutoExtDB
 	from modules.check_internet import CheckInternet
 	from modules.dns_query import Dnslookup
+	from modules.dbcommands import Database
 	
 	#dependencies
 	from libnmap.process import NmapProcess
@@ -54,6 +55,10 @@ class AutoExt:
 		#assign client name and sub out special chars unless you like sqli
 		self.clientName = None
 
+		self.runCheckInet = CheckInternet()
+		self.runCheckInet.get_external_address()
+
+		self.runDns=Dnslookup()
 
 
 	def clear(self):
@@ -151,30 +156,6 @@ class AutoExt:
 		print(self.targetSet)
 
 
-
-
-
-
-
-		#conn to db
-		cur = self.dbconn.cursor()
-		print('[i] Setting up database for %s:' % self.clientName)
-		c=self.clientName
-		#insert rows
-		try:
-			cur.execute("SELECT * FROM client WHERE (name = '%s') " % (c))
-			self.dbconn.commit()
-		except sqlite3.Error as e:
-			print("[-] Database Error: %s" % e.args[0])
-
-		#create new client if existing client doesnt exist
-		try:
-			cur.execute("INSERT INTO client (name) VALUES ('%s') " % (c))
-			self.dbconn.commit()
-		except sqlite3.Error as e:
-			print("[-] Database Error: %s" % e.args[0])
-
-
 	def fix_targets(self, t):
 		
 		#function to resolve hostnames in target file or hostnames stripped from URLs to ip addresses.
@@ -194,7 +175,7 @@ class AutoExt:
 			#just resolve ip from hostname if no http:// or https:// in the entry
 			hostNameCmd = subprocess.Popen(['dig', '+short', t], stdout = PIPE)
 			self.targetSet.add(hostNameCmd.stdout.read().strip('\n'))
-		time.sleep(1.5) 
+		 
 
 
 	def report(self, args):
@@ -203,37 +184,10 @@ class AutoExt:
 		reportGen.run(args, self.reportDir, self.lookup, self.whoisResult, self.domainResult, self.googleResult, self.shodanResult, self.pasteScrapeResult, self.harvesterResult, self.scrapeResult, self.credResult, self.pyfocaResult)
 
 	def dnslookup(self,args):
-
-		runDns=Dnslookup()
-		runDns.query(args)
+		targets = self.targetSet
+		clientName = self.clientName
 		
-		'''print('[i] Querying unique domains from targets list')
-		for t in self.targets:
-
-			try:
-				domain=(socket.gethostbyaddr(t)[0].split('.')[1:])
-				self.domainResult.add('.'.join(domain))
-				time.sleep(0.5)
-			except socket.error as e:
-				continue
-
-		#conn to db
-		cur = self.dbconn.cursor()
-		
-		print('[i] Unique domains encountered for %s: \n' % self.clientName)
-
-		#loop results 
-		c=self.clientName
-		for d in self.domainResult:
-			print(str(''.join(d)))
-			#insert rows
-			try:
-				cur.execute("INSERT INTO domains (name, client_id) VALUES ('%s',(SELECT ID from client where name ='%s'))" % (d,c))
-				self.dbconn.commit()
-			except sqlite3.Error as e:
-				print("[-] Database Error: %s" % e.args[0])
-
-		print('\n[i] Written to database\n')'''
+		self.runDns.query(args,targets, clientName)
 
 	#https://libnmap.readthedocs.io/en/latest/process.html
 	def nmap_tcp(self, args):
@@ -276,15 +230,14 @@ def main():
 	
 	args = parser.parse_args()
 
-	runCheckInet = CheckInternet()
-	runCheckInet.get_external_address()
+
 
 	#run functions with arguments passed
 	runAutoext = AutoExt(args)
 	runAutoext.clear()
 	runAutoext.banner(args)
 	runAutoext.checkargs(args, parser)
-	#runAutoext.dnslookup(args)
+	runAutoext.dnslookup(args)
 	#runAutoext.nmap_tcp(args)
 	#runAutoext.nmap_udp(args)
 	#runAutoext.ftp(args)
