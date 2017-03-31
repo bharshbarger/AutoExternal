@@ -112,7 +112,7 @@ class AutoExt:
 			
 			#test to see if its a valid ip using socket
 			try:
-				print(socket.inet_aton(str(t))) 
+				#print(socket.inet_aton(str(t))) 
 				socket.inet_aton(t)
 				#add to set
 				self.targetSet.add(t)
@@ -120,7 +120,7 @@ class AutoExt:
 			#if the ip isnt valid
 			except socket.error:
 				#tell them
-				if self.args.verbose is True:print ('[v] Invalid IP address [ %s ] found on line %s!' %  (t,i+1))
+				print ('[!] Invalid IP address [ %s ] found on line %s... Fixing!' %  (t,i+1))
 				
 				#fix the entries. this function will add resolved IPs to the targetSet
 				self.fix_targets(t)
@@ -223,7 +223,7 @@ def main():
 	runAutoext.banner()
 	runAutoext.checkargs()
 	runAutoext.add_client_db()
-	runAutoext.domainlookup()
+	#runAutoext.domainlookup()
 	runAutoext.nmap_scan()
 
 	#runAutoext.ftp(args)
