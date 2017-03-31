@@ -7,15 +7,17 @@ from modules.dbcommands import Database
 
 class Domainlookup:
 
-	def __init__(self):
+	def __init__(self,targets,clientName):
 		self.domainResult=set()
 		self.domainResult=set()
+		self.targets=targets
+		self.clientName=clientName
 
-	def query(self,args,targets,clientName):
+	def query(self):
 
 		
 		print('[i] Running dig on IP addresses')
-		for t in targets:
+		for t in self.targets:
 			try:
 				domain=(socket.gethostbyaddr(t)[0].split('.')[1:])
 				print('[i] %s resolves to %s' % (t, '.'.join(domain)))
@@ -28,16 +30,16 @@ class Domainlookup:
 
 
 
-		print('[i] Unique domains encountered for %s: \n' % clientName)
+		print('[i] Unique domains encountered for %s: \n' % self.clientName)
 
-		dbOps=Database(clientName)
+		dbOps=Database(self.clientName)
 		dbconn=dbOps.connect()
 
 		#conn to db
 		cur = dbconn.cursor()
 
 		#loop results 
-		c=clientName
+		c=self.clientName
 		for d in self.domainResult:
 			print(str(''.join(d)))
 			#insert rows

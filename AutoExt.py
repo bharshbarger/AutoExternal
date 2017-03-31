@@ -11,7 +11,7 @@ from reportgen import Reportgen
 import setupAutoExtDB
 from modules.dbcommands import Database
 from modules.check_internet import CheckInternet
-from modules.dns_query import Domainlookup
+from modules.domain_query import Domainlookup
 from modules.nmap import AutoNmap
 	
 #except Exception as e:
@@ -177,8 +177,8 @@ class AutoExt:
 	#invoke domain results module
 	def domainlookup(self):
 
-		self.runDns = Domainlookup()
-		self.runDns.query(args,self.targetSet, self.clientName)
+		self.runDns = Domainlookup(self.targetSet, self.clientName)
+		self.runDns.query()
 
 	#invoke nmap scans module
 	def nmap_scan(self):
