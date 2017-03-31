@@ -1,39 +1,16 @@
 #!/usr/bin/env python
 
-#flow:
-#get scope, test IP for valid IP
-#present user with whois to confirm correct target
-#https://pypi.python.org/pypi/whois  pip3 install whois
-
-
-
-#import and run autosint, linkscrape, smbshakedown
-#do an nmap, save to db?
-#https://pypi.python.org/pypi/python-libnmap/0.6.1
-#pip install libnmap
-#store nmap to a db
-
-
-#ssl
-
-
-
-#if udp500, ike-scan/ikeforce/iker
-#https://labs.portcullis.co.uk/tools/iker/
-
-#ftp anon login or spray with ftplib
-
-#if 80/443 scrape for login
-#repurpose docx reportgen for report
-#create some sort of findings db with like flask or tornado?
-
 try:
 	#builtins
 	import argparse, time, os, sys, ftplib, socket, subprocess, sqlite3, re
+	from urlparse import urlparse
+	from subprocess import Popen, PIPE, STDOUT 
 
 	#local imports
 	from reportgen import Reportgen
 	import setupAutoExtDB
+	from modules.check_internet import CheckInternet
+	from modules.dns_query import Dnslookup
 	
 	#dependencies
 	from libnmap.process import NmapProcess
@@ -44,7 +21,7 @@ except Exception as e:
 
 class AutoExt:
 	def __init__(self, args):
-		self.version ='beta1.031817'
+		self.version ='beta1.033017'
 		
 		#start timer
 		self.startTime=time.time()
@@ -56,7 +33,8 @@ class AutoExt:
 		if not os.path.exists(self.reportDir):
 			os.makedirs(self.reportDir)
 		self.targetsFile = ''
-		self.targets=[]
+		self.targetList = []
+		self.targetSet=set()
 
 		self.autoExtDB = 'AutoExt.db'
 		#check for database
@@ -74,17 +52,8 @@ class AutoExt:
 		self.domainResult=set()
 
 		#assign client name and sub out special chars unless you like sqli
-		self.clientName = re.sub('\W+',' ', args.client)
-		#conn to db
-		cur = self.dbconn.cursor()
-		print('[i] Setting up database for %s:' % self.clientName)
-		c=self.clientName
-		#insert rows
-		try:
-			cur.execute("INSERT INTO client (name) VALUES ('%s') " % (c))
-			self.dbconn.commit()
-		except sqlite3.Error as e:
-			print("[-] Database Error: %s" % e.args[0])
+		self.clientName = None
+
 
 
 	def clear(self):
@@ -117,26 +86,9 @@ class AutoExt:
 		    sys.exit(1)
 
 		if args.file is not None and args.ipaddress is None:
-			print('[i] Opening targets file')
-
+			print('[i] Opening targets file %s' % args.file)
 			self.targetsFile=args.file
-
-			with open(self.targetsFile) as f:
-				targets = f.readlines()
-				targets = [x.strip() for x in targets]
-				self.targets = targets
-
-				#filter only valid IP addresses from targets. could catch sqli/odd chars too?
-				for i,t in enumerate(self.targets):
-					try:
-						socket.inet_aton(str(t))
-					except socket.error:
-						print ('\n[!] Invalid IP address %s entered at line %s!\n' %  (t,i+1))
-						sys.exit()
-
-
-
-				print('[+] All target IP addresses are valid!')
+			self.readTargets(args)
 
 		if args.threads is None:
 			args.threads = 2
@@ -148,14 +100,114 @@ class AutoExt:
 			print('\n[!] Client name required, please provide with -c\n')
 			sys.exit()
 
+		#strip out specials in client name
+		self.clientName = re.sub('\W+',' ', args.client)
+
+	def readTargets(self, args):
+		with open(self.targetsFile) as f:
+			targets = f.readlines()
+			
+			#add to target list
+			for x in targets:
+				self.targetList.append(x.strip())
+		
+		if args.verbose is True:print('\n[v] TARGET LIST: %s\n' % self.targetList)
+
+		#iterate through targetList
+		for i,t in enumerate(self.targetList):
+			
+			#test to see if its a valid ip
+			try:
+				print(socket.inet_aton(str(t))) 
+				socket.inet_aton(t)
+				#add to set
+				self.targetSet.add(t)
+
+			#if the ip isnt valid
+			except socket.error:
+				#tell them
+				print ('[!] Invalid IP address [ %s ] found on line %s!' %  (t,i+1))
+				
+				#fix the entries. this function will add resolved IPs to the targetSet
+				self.fix_targets(t)
+
+			except Exception as e:
+				print(e)
+
+		#finally do a regex on targetList to clean it up(remove non-ip addresses)
+		ipAddrRegex=re.compile("\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}")
+		#only allow IP addresses--if it isnt'
+		if not ipAddrRegex.match(t):
+			#remove from targetList
+			print('removing invalid IP %s'% t)
+			self.targetList.remove(t)
+		else:
+			#otherwise add to target set
+			self.targetSet.add(t)
+
+
+
+		print('[+] All target IP addresses are valid!')
+		print(self.targetSet)
+
+
+
+
+
+
+
+		#conn to db
+		cur = self.dbconn.cursor()
+		print('[i] Setting up database for %s:' % self.clientName)
+		c=self.clientName
+		#insert rows
+		try:
+			cur.execute("SELECT * FROM client WHERE (name = '%s') " % (c))
+			self.dbconn.commit()
+		except sqlite3.Error as e:
+			print("[-] Database Error: %s" % e.args[0])
+
+		#create new client if existing client doesnt exist
+		try:
+			cur.execute("INSERT INTO client (name) VALUES ('%s') " % (c))
+			self.dbconn.commit()
+		except sqlite3.Error as e:
+			print("[-] Database Error: %s" % e.args[0])
+
+
+	def fix_targets(self, t):
+		
+		#function to resolve hostnames in target file or hostnames stripped from URLs to ip addresses.
+		#handle full urls:
+		if re.findall('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', t):
+			parsed_uri = urlparse(t)
+			domain = '{uri.netloc}'.format(uri=parsed_uri)
+			print('[i] Looking up IP for %s' % domain)
+			hostDomainCmd = subprocess.Popen(['dig', '+short', domain], stdout = PIPE)
+			#print('[i] IP address for %s found: %s' % (t,hostDomainCmd.stdout.read().strip('\n')))
+			#for each line in the host commands output, add to a fixed target list
+			self.targetSet.add(hostDomainCmd.stdout.read().strip('\n')) 
+		
+		#filter hostnames
+		else:
+			print('[i] Looking up IP for hostname %s' % t)
+			#just resolve ip from hostname if no http:// or https:// in the entry
+			hostNameCmd = subprocess.Popen(['dig', '+short', t], stdout = PIPE)
+			self.targetSet.add(hostNameCmd.stdout.read().strip('\n'))
+		time.sleep(1.5) 
+
+
 	def report(self, args):
 		
 		reportGen = Reportgen()
 		reportGen.run(args, self.reportDir, self.lookup, self.whoisResult, self.domainResult, self.googleResult, self.shodanResult, self.pasteScrapeResult, self.harvesterResult, self.scrapeResult, self.credResult, self.pyfocaResult)
 
 	def dnslookup(self,args):
+
+		runDns=Dnslookup()
+		runDns.query(args)
 		
-		print('[i] Querying unique domains from targets list')
+		'''print('[i] Querying unique domains from targets list')
 		for t in self.targets:
 
 			try:
@@ -181,7 +233,7 @@ class AutoExt:
 			except sqlite3.Error as e:
 				print("[-] Database Error: %s" % e.args[0])
 
-		print('\n[i] Written to database\n')
+		print('\n[i] Written to database\n')'''
 
 	#https://libnmap.readthedocs.io/en/latest/process.html
 	def nmap_tcp(self, args):
@@ -224,12 +276,15 @@ def main():
 	
 	args = parser.parse_args()
 
+	runCheckInet = CheckInternet()
+	runCheckInet.get_external_address()
+
 	#run functions with arguments passed
 	runAutoext = AutoExt(args)
 	runAutoext.clear()
 	runAutoext.banner(args)
 	runAutoext.checkargs(args, parser)
-	runAutoext.dnslookup(args)
+	#runAutoext.dnslookup(args)
 	#runAutoext.nmap_tcp(args)
 	#runAutoext.nmap_udp(args)
 	#runAutoext.ftp(args)
