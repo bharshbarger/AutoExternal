@@ -1,24 +1,26 @@
 #!/usr/bin/env python
 
-try:
+#try:
 	#builtins
-	import argparse, time, os, sys, ftplib, socket, subprocess, sqlite3, re
-	from urlparse import urlparse
-	from subprocess import Popen, PIPE, STDOUT 
+import argparse, time, os, sys, ftplib, socket, subprocess, sqlite3, re
+from urlparse import urlparse
+from subprocess import Popen, PIPE, STDOUT 
 
-	#from local modules import class
-	from reportgen import Reportgen
-	import setupAutoExtDB
-	from modules.dbcommands import Database
-	from modules.check_internet import CheckInternet
-	from modules.dns_query import Dnslookup
-	from modules.nmap import AutoNmap
+#from local modules import class
+from reportgen import Reportgen
+import setupAutoExtDB
+from modules.dbcommands import Database
+from modules.check_internet import CheckInternet
+from modules.dns_query import Domainlookup
+from modules.nmap import AutoNmap
 	
-except Exception as e:
-	print('\n[!] Failed imports: %s \n' % (str(e)))
+#except Exception as e:
+	#print('\n[!] Failed imports: %s \n' % (str(e)))
 
 class AutoExt:
 	def __init__(self, args, parser):
+
+		#defaults
 		self.version ='beta1.033017'
 		self.args = args
 		self.parser = parser
@@ -30,6 +32,9 @@ class AutoExt:
 		self.autoExtDB = 'AutoExt.db'
 		self.domainResult=set()
 		self.clientName = None
+
+		#init modules
+		self.runCheckInet = CheckInternet()
 
 	def clear(self):
 	    os.system('cls' if os.name == 'nt' else 'clear')
@@ -49,6 +54,9 @@ class AutoExt:
 
 	
 	def checkargs(self):
+
+		#make sure you are online!
+		self.runCheckInet.get_external_address()
 
 		#check local dirs
 		if not os.path.exists(self.reportDir):
@@ -167,10 +175,10 @@ class AutoExt:
 		dbOps.add_client()		 
 
 	#invoke domain results module
-	def dnslookup(self):
+	def domainlookup(self):
 
-		runDns = Dnslookup()
-		runDns.query(args,self.targetSet, self.clientName)
+		self.runDns = Domainlookup()
+		self.runDns.query(args,self.targetSet, self.clientName)
 
 	#invoke nmap scans module
 	def nmap_scan(self):
@@ -204,9 +212,9 @@ def main():
 	
 	args = parser.parse_args()
 	
-	#make sure you're online
-	runCheckInet = CheckInternet()
-	runCheckInet.get_external_address()
+
+	
+	
 
 
 	#run functions with arguments passed
@@ -215,7 +223,7 @@ def main():
 	runAutoext.banner()
 	runAutoext.checkargs()
 	runAutoext.add_client_db()
-	runAutoext.dnslookup()
+	runAutoext.domainlookup()
 	runAutoext.nmap_scan()
 
 	#runAutoext.ftp(args)

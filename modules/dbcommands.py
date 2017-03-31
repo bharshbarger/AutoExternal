@@ -31,11 +31,10 @@ class Database:
 		#insert rows
 		try:
 			cur.execute("SELECT * FROM client WHERE (name = '%s') " % (c))
-
-        	results = cur.fetchall()
-        	cur.close()
-        	print results
-        	return results
+			results = cur.fetchall()
+			cur.close()
+			print results
+			return results
 
 
 
