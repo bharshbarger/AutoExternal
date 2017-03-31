@@ -13,6 +13,7 @@ from modules.dbcommands import Database
 from modules.check_internet import CheckInternet
 from modules.domain_query import Domainlookup
 from modules.nmap import AutoNmap
+from modules.ftp_check import Ftpscan
 	
 #except Exception as e:
 	#print('\n[!] Failed imports: %s \n' % (str(e)))
@@ -187,8 +188,13 @@ class AutoExt:
 		nmap.scan_tcp()
 		#nmap.scan_udp()
 
-	def ftp_check(self):
-		ftp=''
+	def ftp_scan(self):
+
+
+		#need logic to feed in open ports from nmap module
+
+		ftp = Ftpscan(self.targetSet)
+		ftp.anon_test()
 
 
 	#invoke report module
@@ -223,10 +229,9 @@ def main():
 	runAutoext.banner()
 	runAutoext.checkargs()
 	runAutoext.add_client_db()
-	#runAutoext.domainlookup()
+	runAutoext.domainlookup()
 	runAutoext.nmap_scan()
-
-	#runAutoext.ftp(args)
+	runAutoext.ftp_scan()
 
 	#runAutoext.report(args)
 
