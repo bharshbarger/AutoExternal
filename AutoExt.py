@@ -107,6 +107,8 @@ class AutoExt:
 		#strip out specials in client name
 		self.clientName = re.sub('\W+',' ', args.client)
 
+
+
 	def readTargets(self, args):
 		with open(self.targetsFile) as f:
 			targets = f.readlines()
@@ -174,7 +176,11 @@ class AutoExt:
 			#just resolve ip from hostname if no http:// or https:// in the entry
 			hostNameCmd = subprocess.Popen(['dig', '+short', t], stdout = PIPE)
 			self.targetSet.add(hostNameCmd.stdout.read().strip('\n'))
-		 
+
+	def add_client_db(self):
+		clientName=self.clientName
+		dbOps=Database()
+		dbOps.add_client(clientName)		 
 
 
 	def report(self, args):
@@ -236,6 +242,7 @@ def main():
 	runAutoext.clear()
 	runAutoext.banner(args)
 	runAutoext.checkargs(args, parser)
+	runAutoext.add_client_db()
 	runAutoext.dnslookup(args)
 	#runAutoext.nmap_tcp(args)
 	#runAutoext.nmap_udp(args)

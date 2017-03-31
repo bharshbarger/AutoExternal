@@ -44,6 +44,7 @@ class Dnslookup:
 			try:
 				cur.execute("INSERT INTO domains (name, client_id) VALUES ('%s',(SELECT ID from client where name ='%s'))" % (d,c))
 				dbconn.commit()
+				dbconn.close()
 			except sqlite3.Error as e:
 				print("[-] Database Error: %s" % e.args[0])
 
