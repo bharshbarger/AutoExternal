@@ -112,7 +112,7 @@ class AutoExt:
 			
 			#test to see if its a valid ip using socket
 			try:
-				print(socket.inet_aton(str(t))) 
+				#print(socket.inet_aton(str(t))) 
 				socket.inet_aton(t)
 				#add to set
 				self.targetSet.add(t)
