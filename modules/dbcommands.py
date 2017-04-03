@@ -60,6 +60,8 @@ class Database:
 		except sqlite3.Error as e:
 			print("[-] Database Error: %s" % e.args[0])
 
+		print('\n')
+
 
 def main():
 
