@@ -21,39 +21,50 @@ class Database:
 		return dbconn
 
 	def add_client(self):
+		results = None
 
-		dbconn=self.connect()
+		dbconn = self.connect()
 
 		#conn to db
 		cur = dbconn.cursor()
-		print('[i] Adding client [ %s ] to database:' % self.clientName)
-		c=self.clientName
+		
+		c = self.clientName
 		#insert rows
-		print('ID___ Name___________ Contact____________  Date_______________')
-
-
+		
 		#check to see if the client name exists, and if it does print it, and if it doesnt add it
 		try:
+
 			#look for existing name from supplied arg
+			print('\n[i] Checking for client [ %s ] in database\n' % self.clientName)
 			cur.execute("SELECT * FROM client WHERE (name = '%s') " % (c))
 			results = cur.fetchall()
-			cur.close()
-
-			#if there is a result
-			if results is not None:
+			#cur.close()
+			
+			#if there is a result, print in a table
+			if results:
 				#print it
+				print('ID___ Name___________ Contact____________  Date_______________')
+				
 				for row in results:
 					print ('%-5s %-15s %-20s %-s' % (row[0], row[1], row[2], row[3]))
 			#if there isn't a result
 			else:
 				#add customer
+				print ('[i] Client %s not in database, adding' % self.clientName)
 				try:
 					cur.execute("INSERT INTO client (name) VALUES ('%s') " % (c))
 					dbconn.commit()
 					#and display it
 					cur.execute("SELECT * FROM client WHERE (name = '%s') " % (c))
 					results = cur.fetchall()
-					cur.close()
+					#cur.close()
+					cur.execute("SELECT * FROM client WHERE (name = '%s') " % (c))
+					results = cur.fetchall()
+					print('ID___ Name___________ Contact____________  Date_______________')
+				
+					for row in results:
+						print ('%-5s %-15s %-20s %-s' % (row[0], row[1], row[2], row[3]))
+
 				except sqlite3.Error as e:
 					print("[-] Database Error: %s" % e.args[0])
 

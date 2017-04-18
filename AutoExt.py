@@ -7,9 +7,9 @@ from urlparse import urlparse
 from subprocess import Popen, PIPE, STDOUT 
 
 #from local modules import class
-from reportgen import Reportgen
+from resources.reportgen import Reportgen
 import setupAutoExtDB
-from modules.dbcommands import Database
+from resources.dbcommands import Database
 from modules.check_internet import CheckInternet
 from modules.domain_query import Domainlookup
 from modules.nmap import AutoNmap
@@ -216,6 +216,11 @@ class AutoExt:
 		reportGen.run(self.args, self.reportDir, self.lookup, self.whoisResult, self.domainResult, self.googleResult, self.shodanResult, self.pasteScrapeResult, self.harvesterResult, self.scrapeResult, self.credResult, self.pyfocaResult)
 
 
+	def run_checks(self):
+		#place to run ssl/tls, ipsec, dns, what have you
+		t=None
+
+
 def main():
 
 	#https://docs.python.org/3/library/argparse.html
@@ -237,7 +242,7 @@ def main():
 	runAutoext.checkargs(parser)
 	runAutoext.add_client_db()
 	runAutoext.domainlookup()
-	runAutoext.nmap_scan()
+	#runAutoext.nmap_scan()
 	#runAutoext.ftp_scan()
 	#runAutoext.transport_scan()
 
