@@ -13,6 +13,13 @@ from modules.dbcommands import Database
 from modules.check_internet import CheckInternet
 from modules.domain_query import Domainlookup
 from modules.nmap import AutoNmap
+from modules.ftp_check import Ftpscan
+#from modules.transport_scan import TransportScan
+
+
+#third party
+#sslyze dependency in sslyze.py
+
 	
 #except Exception as e:
 	#print('\n[!] Failed imports: %s \n' % (str(e)))
@@ -32,6 +39,7 @@ class AutoExt:
 		self.autoExtDB = 'AutoExt.db'
 		self.domainResult=set()
 		self.clientName = None
+		self.nmapOptions = []
 
 		#init modules
 		self.runCheckInet = CheckInternet()
@@ -53,7 +61,7 @@ class AutoExt:
 
 
 	
-	def checkargs(self):
+	def checkargs(self, parser):
 
 		#make sure you are online!
 		self.runCheckInet.get_external_address()
@@ -81,6 +89,11 @@ class AutoExt:
 		#if threads specified, use that value
 		if self.args.threads is not None:
 			self.args.threads=int(self.args.threads)
+
+		#nmap arguments
+		if self.args.nmap is not None:
+			self.args.nmapOptions = self.args.nmap 
+			print('nmap args %s' % self.args.nmapOptions)
 
 		#check for a supplied client name and exit if none provided
 		if self.args.client is None:
@@ -183,12 +196,17 @@ class AutoExt:
 	#invoke nmap scans module
 	def nmap_scan(self):
 
-		nmap = AutoNmap(self.targetSet)
+		nmap = AutoNmap(self.targetSet, self.clientName, self.nmapOptions)
 		nmap.scan_tcp()
 		#nmap.scan_udp()
 
-	def ftp_check(self):
-		ftp=''
+	def ftp_scan(self):
+
+
+		#need logic to feed in open ports from nmap module
+
+		ftp = Ftpscan(self.targetSet)
+		ftp.anon_test()
 
 
 	#invoke report module
@@ -206,27 +224,22 @@ def main():
 	parser.add_argument('-c', '--client', help = 'client name')
 	parser.add_argument('-f', '--file', metavar='targets.txt',help = 'input file')
 	parser.add_argument('-i', '--ipaddress', metavar='127.0.0.1', nargs='*',help = 'IP address(es) to scan')
-	parser.add_argument('-n', '--nmap', metavar='nmap options',help = 'run nmap')
+	parser.add_argument('-n', '--nmap', metavar='nmap options', nargs='*',help = 'run nmap with optional args in double quotes, e.g "-T4 -p-"')
 	parser.add_argument('-t', '--threads', metavar='2', help='generally how parallel to run tests')
 	parser.add_argument('-v', '--verbose', help = 'Verbose', action = 'store_true')	
 	
 	args = parser.parse_args()
-	
-
-	
-	
-
 
 	#run functions with arguments passed
 	runAutoext = AutoExt(args, parser)
 	runAutoext.clear()
 	runAutoext.banner()
-	runAutoext.checkargs()
+	runAutoext.checkargs(parser)
 	runAutoext.add_client_db()
-	#runAutoext.domainlookup()
+	runAutoext.domainlookup()
 	runAutoext.nmap_scan()
-
-	#runAutoext.ftp(args)
+	#runAutoext.ftp_scan()
+	#runAutoext.transport_scan()
 
 	#runAutoext.report(args)
 

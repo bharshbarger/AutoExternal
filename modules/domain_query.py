@@ -30,7 +30,7 @@ class Domainlookup:
 
 
 
-		print('[i] Unique domains encountered for %s: \n' % self.clientName)
+		
 
 		dbOps=Database(self.clientName)
 		dbconn=dbOps.connect()
@@ -50,7 +50,12 @@ class Domainlookup:
 			except sqlite3.Error as e:
 				print("[-] Database Error: %s" % e.args[0])
 
-		print('\n[i] Written to database\n')
+
+			print('[i] Unique domains encountered for %s: \n' % self.clientName)
+			if d is not None:
+				print('\n[i] Committed client domain %s to database for client %s\n' %(d, self.clientName))
+			else:
+				print('[i] No client domains found.')
 
 
 
