@@ -96,7 +96,7 @@ class Database:
 			cur.close()
 
 			#if there is a result
-			if results is not None:
+			if results:
 				#print it
 				for row in results:
 					print ('%-5s %-15s %-20s %-s' % (row[0], row[1], row[2], row[3]))
@@ -140,7 +140,7 @@ class Database:
 			cur.close()
 
 			#if there is a result
-			if results is not None:
+			if results:
 				#print it
 				for row in results:
 					print ('%-5s %-15s %-20s %-s' % (row[0], row[1], row[2], row[3]))
